@@ -23,6 +23,8 @@ export type Lead = {
   score: number;
   raisons: string[];
   lien?: string | null;
+  annuel?: number;        // montant ramené à une année
+  horsTaille?: boolean;   // trop gros pour la taille de l'entreprise
 };
 
 export type Concurrent = { siret: string; nom: string; marches: number; montant: number; offresMoy: number; vous?: boolean };
@@ -31,7 +33,7 @@ export type Kpi = { label: string; valeur: number; format: "euros" | "nombre" | 
 
 export type Evenement =
   | { t: "etape"; etape: Etape }
-  | { t: "cible"; titre: string; sousTitre: string; details: { label: string; valeur: string }[] }
+  | { t: "cible"; titre: string; sousTitre: string; details: { label: string; valeur: string }[]; ca?: number }
   | { t: "kpis"; kpis: Kpi[] }
   | { t: "leads"; leads: Lead[]; titre: string }
   | { t: "concurrents"; concurrents: Concurrent[]; titre: string }

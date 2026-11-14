@@ -94,6 +94,34 @@ async function contactPublic(nom: string): Promise<{ nom: string; courriel: stri
 
 /* ───────────────────────────── ENTREPRISE ───────────────────────────── */
 
+const EFFECTIFS: Record<string, [number, string]> = {
+  "00": [0, "aucun salarié"], "01": [2, "1 à 2 salariés"], "02": [5, "3 à 5 salariés"], "03": [9, "6 à 9 salariés"], "11": [19, "10 à 19 salariés"],
+  "12": [49, "20 à 49 salariés"], "21": [99, "50 à 99 salariés"], "22": [199, "100 à 199 salariés"], "31": [249, "200 à 249 salariés"], "32": [499, "250 à 499 salariés"],
+  "41": [999, "500 à 999 salariés"], "42": [1999, "1 000 à 1 999 salariés"], "51": [4999, "2 000 à 4 999 salariés"], "52": [9999, "5 000 à 9 999 salariés"], "53": [20000, "10 000 salariés et plus"],
+};
+const PLAFOND_CATEGORIE: Record<string, number> = { PME: 50e6, ETI: 1.5e9 };
+const LABELS: [string, string][] = [["est_rge", "RGE"], ["est_bio", "bio"], ["est_ess", "économie sociale et solidaire"], ["est_siae", "insertion par l'activité économique"], ["est_qualiopi", "Qualiopi"], ["est_societe_mission", "société à mission"], ["est_achats_responsables", "label achats responsables"], ["est_patrimoine_vivant", "entreprise du patrimoine vivant"]];
+
+type Taille = { ca: number; caLibelle: string; estime: boolean; effectifs?: string; labels: string[] };
+
+/** Taille de l'entreprise lue dans le registre officiel (recherche-entreprises.api.gouv.fr) : comptes publiés, sinon ordre de grandeur d'après les effectifs. */
+async function tailleEntreprise(siren: string): Promise<Taille | null> {
+  const r = await fetch(`https://recherche-entreprises.api.gouv.fr/search?q=${siren}&per_page=1`, { signal: AbortSignal.timeout(6000), cache: "no-store" });
+  if (!r.ok) return null;
+  const e = (await r.json()).results?.find((x: any) => x.siren === siren);
+  if (!e) return null;
+  const labels = LABELS.filter(([k]) => e.complements?.[k]).map(([, l]) => l);
+  const eff = EFFECTIFS[String(e.tranche_effectif_salarie)];
+  const annee = Object.keys(e.finances || {}).sort().pop();
+  const caPublie = annee ? Number(e.finances[annee].ca) : 0;
+  if (caPublie > 0) return { ca: caPublie, caLibelle: `${euros(caPublie)} (comptes ${annee})`, estime: false, effectifs: eff?.[1], labels };
+  // Ordre de grandeur : 100 k€ par salarié, borné par le plafond légal de la catégorie.
+  const ca = Math.min(Math.max(150e3, (eff?.[0] ?? 1) * 100e3), PLAFOND_CATEGORIE[e.categorie_entreprise] ?? Infinity);
+  return { ca, caLibelle: `environ ${euros(ca)} (estimé d'après les effectifs, comptes non publiés)`, estime: true, effectifs: eff?.[1], labels };
+}
+
+const SECTEURS_VUS = new Map<string, { secteur: string; mots: string[] }>();
+
 export async function analyseEntreprise(q: string, a: Agent) {
   const ent = await a.etape("sirene", "Je lis le registre des entreprises (Sirene)…", async () => {
     const r = await outil("chercher_entreprise", { q });
@@ -111,24 +139,38 @@ export async function analyseEntreprise(q: string, a: Agent) {
   const naf = String(ent.activite_principale || "");
   const secteur = await a.etape("ia", "L'agent déduit vos marchés publics cibles…", async () => {
     const def = NAF_SECTEURS[naf.slice(0, 2)] || { secteur: "Activité " + naf, mots: [String(ent.nom).split(" ")[0].toLowerCase()] };
+    const regle = NAF_SECTEURS[naf.slice(0, 2)] || SECTEURS_VUS.get(ent.siren);
+    if (regle) return { detail: `${regle.secteur} → ${regle.mots.slice(0, 2).join(", ")}`, valeur: regle };
     try {
       const m = await chat([
         { role: "system", content: "Tu es expert de la commande publique française. Réponds uniquement en JSON." },
         { role: "user", content: `Entreprise : ${ent.nom}, code NAF ${naf}. Donne {"secteur": "libellé court", "mots": [2 mots-clés d'un seul mot, en minuscules, les plus fréquents dans l'objet des marchés publics qu'elle peut gagner, le premier étant le terme générique du métier (ex. nettoyage, voirie, informatique, restauration, gardiennage)]}` },
-      ], { max_tokens: 200, temperature: 0.1 });
+      ], { max_tokens: 200, temperature: 0 });
       const j = extraireJson<{ secteur: string; mots: string[] }>(m.content);
-      if (j?.mots?.length) return { detail: `${j.secteur} → ${j.mots.join(", ")}`, valeur: { secteur: j.secteur, mots: j.mots.slice(0, 2).map((x) => String(x).toLowerCase()) } };
+      if (j?.mots?.length) { SECTEURS_VUS.set(ent.siren, { secteur: j.secteur, mots: j.mots.slice(0, 2).map((x) => String(x).toLowerCase()) }); return { detail: `${j.secteur} → ${j.mots.join(", ")}`, valeur: { secteur: j.secteur, mots: j.mots.slice(0, 2).map((x) => String(x).toLowerCase()) } }; }
     } catch { /* repli NAF */ }
     return { detail: `${def.secteur} → ${def.mots.join(", ")} (règle NAF)`, valeur: def };
   });
   const mots = secteur!.mots;
+  const taille = await a.etape("taille", "Je mesure la taille de l'entreprise (registre officiel, comptes publiés)…", async () => {
+    const t = await tailleEntreprise(ent.siren).catch(() => null);
+    return { outil: "Annuaire des entreprises (data.gouv.fr)", detail: t ? `Chiffre d'affaires : ${t.caLibelle}` : "Taille inconnue : montants non filtrés", valeur: t };
+  });
+  // Règle de prudence : un marché est « à la taille » s'il pèse au plus la moitié du chiffre d'affaires par an.
+  const maxAnnuel = taille ? taille.ca / 2 : Infinity;
+  const annuelDe = (montant: number, mois?: number) => (mois && mois > 12 ? montant * 12 / mois : montant);
+  const tropGros = (annuel: number) => `Trop gros pour votre taille : ${euros(annuel)} par an, pour un chiffre d'affaires de ${euros(taille!.ca)}`;
   const depSiege = normDept(ent.siege?.departement || "");
 
   a.envoyer({
     t: "cible", titre: ent.nom, sousTitre: secteur!.secteur,
+    ca: taille?.ca,
     details: [
       { label: "SIREN", valeur: ent.siren },
       { label: "Catégorie", valeur: ent.categorie || "—" },
+      ...(taille ? [{ label: "Chiffre d'affaires", valeur: taille.caLibelle }] : []),
+      ...(taille?.effectifs ? [{ label: "Effectifs", valeur: taille.effectifs }] : []),
+      ...(taille?.labels.length ? [{ label: "Labels publics", valeur: taille.labels.join(", ") }] : []),
       { label: "Établissements ouverts", valeur: String(ent.etablissements_ouverts ?? "—") },
       { label: "Siège", valeur: ent.siege?.adresse || "—" },
       { label: "Dirigeant", valeur: ent.dirigeants?.[0] ? `${ent.dirigeants[0].prenoms ?? ""} ${ent.dirigeants[0].nom}`.trim() : "—" },
@@ -155,7 +197,8 @@ export async function analyseEntreprise(q: string, a: Agent) {
   const renouv = mar.filter((l) => Number(l.dureemois) > 0)
     .map((l) => ({ l, fin: ajouterMois(l.datenotification, Number(l.dureemois)) }))
     .filter((x) => x.fin > new Date())
-    .sort((x, y) => (Number(y.l.montant) || 0) - (Number(x.l.montant) || 0)).slice(0, 25);
+    .map((x) => ({ ...x, annuel: annuelDe(Number(x.l.montant) || 0, Number(x.l.dureemois)) }))
+    .sort((x, y) => Number(x.annuel > maxAnnuel) - Number(y.annuel > maxAnnuel) || y.annuel - x.annuel).slice(0, 25);
   const titulaires = grouperTitulaires(mar).slice(0, 8);
 
   const noms = await a.etape("enrichir", "J'identifie les acheteurs et vos concurrents (Sirene)…", async () => {
@@ -178,15 +221,17 @@ export async function analyseEntreprise(q: string, a: Agent) {
     if (depts.includes(depSiege)) { s += 12; raisons.push("Dans le département de votre siège"); }
     if (mois < 12) { s += 8; raisons.push("Publication prévue dans moins d'un an"); }
     if (l.marche_reserve) raisons.push(`Marché réservé : ${l.marche_reserve}`);
+    const hors = montant > maxAnnuel;
+    if (hors) { s = Math.min(s, 20); raisons.unshift(tropGros(montant)); }
     leads.push({
       id: "a" + l.code, type: "annonce", titre: l.libelle,
       acheteur: noms[String(l.siren_de_l_entite_acheteuse).padStart(9, "0")] || `SIREN ${l.siren_de_l_entite_acheteuse}`,
-      depts, date: l.date_previsionnelle_de_publication, montant,
+      depts, date: l.date_previsionnelle_de_publication, montant, annuel: montant, horsTaille: hors,
       montantLibelle: l.montant_estime_du_marche || "Non communiqué", score: Math.round(clamp(s, 5, 97)), raisons,
       lien: l.lien_vers_la_consultation,
     });
   }
-  for (const { l, fin } of renouv) {
+  for (const { l, fin, annuel } of renouv) {
     const montant = Number(l.montant) || 0;
     const offres = Number(l.offresrecues) || 0;
     const relance = ajouterMois(fin.toISOString(), -4);
@@ -197,10 +242,12 @@ export async function analyseEntreprise(q: string, a: Agent) {
     if (/sans publicit/i.test(l.procedure || "")) { s -= 8; raisons.push("Passé sans publicité : prenez contact en amont"); }
     const dep = deptDepuisCodePostal(l.lieuexecution_code);
     if (dep && dep === depSiege) { s += 10; raisons.push("Dans le département de votre siège"); }
+    const hors = annuel > maxAnnuel;
+    if (hors) { s = Math.min(s, 20); raisons.unshift(tropGros(annuel)); }
     leads.push({
       id: "r" + l.acheteur_id + l.id, type: "renouvellement", titre: l.objet,
       acheteur: noms[String(l.acheteur_id)] || `SIRET ${l.acheteur_id}`,
-      depts: dep ? [dep] : [], date: relance.toISOString().slice(0, 10), montant,
+      depts: dep ? [dep] : [], date: relance.toISOString().slice(0, 10), montant, annuel, horsTaille: hors,
       montantLibelle: euros(montant) + " (montant actuel)", score: Math.round(clamp(s, 5, 95)), raisons,
     });
   }
@@ -209,11 +256,11 @@ export async function analyseEntreprise(q: string, a: Agent) {
   const valeurs: Record<string, number> = {};
   for (const ld of leads) for (const d of ld.depts) valeurs[d] = (valeurs[d] || 0) + ld.montant / Math.max(1, ld.depts.length);
 
-  const totalAnn = leads.filter((l) => l.type === "annonce").reduce((s, l) => s + l.montant, 0);
-  const totalRen = leads.filter((l) => l.type === "renouvellement").reduce((s, l) => s + l.montant, 0);
+  const totalAnn = leads.filter((l) => l.type === "annonce" && !l.horsTaille).reduce((s, l) => s + l.montant, 0);
+  const totalRen = leads.filter((l) => l.type === "renouvellement" && !l.horsTaille).reduce((s, l) => s + l.montant, 0);
   const st = statsMarches(mar);
   a.envoyer({ t: "kpis", kpis: [
-    { label: "Opportunités publiques détectées", valeur: totalAnn + totalRen, format: "euros", aide: "Achats annoncés (milieu de fourchette) + marchés à renouveler" },
+    { label: "Opportunités publiques détectées", valeur: totalAnn + totalRen, format: "euros", aide: "Achats annoncés (milieu de fourchette) + marchés à renouveler, à la taille de l'entreprise" },
     { label: "Achats annoncés avant appel d'offres", valeur: leads.filter((l) => l.type === "annonce").length, format: "nombre" },
     { label: "Renouvellements prédits", valeur: leads.filter((l) => l.type === "renouvellement").length, format: "nombre" },
     { label: "Marchés de votre secteur à une seule offre", valeur: st.pctUneOffre, format: "pourcent", aide: "Plus ce taux est haut, plus il y a de place pour un nouvel entrant" },
@@ -233,7 +280,7 @@ export async function analyseEntreprise(q: string, a: Agent) {
     const top = leads.slice(0, 5).map((l) => `- [${l.type}] ${l.titre} | ${l.acheteur} | ${l.date} | ${l.montantLibelle} | score ${l.score} | ${l.raisons.join(" ; ")}`).join("\n");
     const moi = conc.find((c) => c.vous);
     const faits = [
-      `${ent.etablissements_ouverts ?? "?"} établissements ouverts`, ent.categorie && `catégorie ${ent.categorie}`, `siège : ${ent.siege?.adresse || "dép. " + depSiege}`,
+      `${ent.etablissements_ouverts ?? "?"} établissements ouverts`, ent.categorie && `catégorie ${ent.categorie}`, taille && `chiffre d'affaires ${taille.caLibelle}`, taille?.effectifs, taille?.labels.length && `labels publics : ${taille.labels.join(", ")}`, `siège : ${ent.siege?.adresse || "dép. " + depSiege}`,
       moi ? `déjà titulaire de ${moi.marches} marché(s) publics du secteur pour ${euros(moi.montant)}` : "pas encore titulaire parmi les marchés analysés",
     ].filter(Boolean).join(" ; ");
     const lois = (textes || []).map((t, i) => `T${i + 1}. ${t.titre} : ${t.sousTitre.slice(0, 260)}`).join("\n") || "aucun";

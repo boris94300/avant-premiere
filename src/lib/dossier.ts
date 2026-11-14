@@ -2,17 +2,20 @@ import type { Concurrent, Kpi, Lead } from "./types";
 import { FORMATS, fEuros } from "./format";
 
 export type Dossier = {
-  cible?: { titre: string; sousTitre: string; details: { label: string; valeur: string }[] };
+  cible?: { ca?: number; titre: string; sousTitre: string; details: { label: string; valeur: string }[] };
   kpis?: Kpi[]; leads: Lead[]; concurrents?: Concurrent[];
   textes?: { titre: string; sousTitre: string; lien?: string }[];
   synthese?: string; mail?: string; destinataire?: string;
 };
 
 const DOUZE_MOIS = 365 * 864e5;
-/** Chiffre d'affaires atteignable : montants des opportunités à moins de 12 mois, pondérés par leur score. */
-export function caAtteignable(leads: Lead[]) {
+/** Part du chiffre d'affaires qu'une entreprise peut raisonnablement aller chercher en un an sur le public. */
+export const PART_CA_MAX = 0.3;
+
+export function caAtteignable(leads: Lead[], ca?: number) {
   const lim = Date.now() + DOUZE_MOIS;
-  return leads.filter((l) => new Date(l.date).getTime() <= lim).reduce((s, l) => s + l.montant * (l.score / 100), 0);
+  const brut = leads.filter((l) => !l.horsTaille && new Date(l.date).getTime() <= lim).reduce((s, l) => s + (l.annuel ?? l.montant) * (l.score / 100), 0);
+  return ca ? Math.min(brut, ca * PART_CA_MAX) : brut;
 }
 
 function telecharger(blob: Blob, nom: string) {
@@ -68,7 +71,7 @@ async function construirePdf(d: Dossier) {
   }
   if (d.synthese) { titre("3. Plan d'attaque"); texte(d.synthese); }
   if (d.kpis?.length) for (const k of d.kpis) texte(`${k.label} : ${FORMATS[k.format](k.valeur)}`, { apres: 2 });
-  texte(`Chiffre d'affaires atteignable sur 12 mois (montants pondérés par le score) : ${fEuros(caAtteignable(d.leads))}.`, { gras: true });
+  texte(`Chiffre d'affaires atteignable sur 12 mois (montants annuels des marchés à votre taille, pondérés par le score, plafonnés à 30 % du chiffre d'affaires) : ${fEuros(caAtteignable(d.leads, d.cible?.ca))}.`, { gras: true });
 
   if (d.textes?.length) {
     titre("4. Textes en vigueur et amendements récents");

@@ -200,7 +200,7 @@ export default function Tableau() {
             )}
             {etat.fin && etat.leads && etat.leads.length > 0 && (
               <div className="actions-mini">
-                {profil === "entreprise" && <span className="ca" title="Montants des opportunités à moins de 12 mois, pondérés par leur score">≈ <b>{fEuros(caAtteignable(etat.leads))}</b> atteignables sur 12 mois</span>}
+                {profil === "entreprise" && <span className="ca" title="Marchés à votre taille à moins de 12 mois, en montant annuel pondéré par le score, plafonné à 30 % de votre chiffre d'affaires">≈ <b>{fEuros(caAtteignable(etat.leads, etat.cible?.ca))}</b> atteignables sur 12 mois</span>}
                 <button type="button" onClick={() => exporterPdf({ cible: etat.cible, kpis: etat.kpis, leads: etat.leads!, concurrents: etat.concurrents, textes: etat.parlement, synthese: etat.synthese?.texte, mail: etat.synthese?.mail, destinataire: etat.synthese?.destinataire })}>Dossier PDF</button>
                 <button type="button" onClick={() => exporterCsv(etat.leads!, etat.cible?.titre || profil)}>Excel</button>
                 {etat.synthese?.mail && <button type="button" title="Le mail avec le dossier PDF en pièce jointe" onClick={() => envoyerAvecPdf({ cible: etat.cible, kpis: etat.kpis, leads: etat.leads!, concurrents: etat.concurrents, textes: etat.parlement, synthese: etat.synthese?.texte, mail: etat.synthese?.mail, destinataire: etat.synthese?.destinataire })}>Mail + PDF</button>}
@@ -356,6 +356,7 @@ function LigneLead({ l, i, profil }: { l: Lead; i: number; profil: ProfilId }) {
         <div className="etiquettes">
           <span className={`etiquette ${l.type}`}>{libType}</span>
           <span className="etiquette">{l.montantLibelle}</span>
+          {l.horsTaille && <span className="etiquette hors-taille">Trop gros pour votre taille</span>}
           {profil !== "etat" && l.type !== "subvention" && <span className="etiquette">{l.type === "annonce" ? "Publication" : "Relance estimée"} : {fDate(l.date)}</span>}
           {l.depts.length > 0 && <span className="etiquette">{l.depts.length > 3 ? `${l.depts.length} départements` : `Dép. ${l.depts.join(", ")}`}</span>}
         </div>

@@ -403,3 +403,4 @@ body:has(.scene-app) .pied { display: none; }
 /* Le bouton agent est en bas à gauche : les panneaux de gauche lui laissent la place. */
 @media (min-width: 821px) { .volet.petit { bottom: 84px; max-height: calc(100dvh - 180px); } }
 @media (max-width: 820px) { .intro { bottom: 96px; } }
+.etiquette.hors-taille { color: #fca5a5; border-color: rgba(252, 165, 165, .4); }
