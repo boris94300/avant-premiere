@@ -5,6 +5,7 @@ import { SITE } from "@/config/site";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./globals.css";
 import FondScene from "@/components/FondScene";
+import Cookies from "@/components/Cookies";
 
 const sans = IBM_Plex_Sans({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-sans" });
 const serif = Newsreader({ subsets: ["latin"], weight: ["400", "500", "600"], style: ["normal", "italic"], variable: "--font-serif" });
@@ -39,6 +40,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <p>{SITE.sourcesMention}</p>
           <p>Prédictions indicatives, calculées à partir des données publiques. Aucune donnée personnelle n'est stockée.</p>
         </footer>
+        <Cookies />
       </body>
     </html>
   );

@@ -404,3 +404,10 @@ body:has(.scene-app) .pied { display: none; }
 @media (min-width: 821px) { .volet.petit { bottom: 84px; max-height: calc(100dvh - 180px); } }
 @media (max-width: 820px) { .intro { bottom: 96px; } }
 .etiquette.hors-taille { color: #fca5a5; border-color: rgba(252, 165, 165, .4); }
+
+/* Bandeau cookies */
+.cookies { position: fixed; z-index: 80; right: 16px; bottom: 16px; width: min(380px, calc(100vw - 32px)); background: rgba(7, 14, 27, .94); border: 1px solid var(--ligne); border-radius: 14px; padding: 12px 14px; font-size: 13px; color: var(--encre-2); backdrop-filter: blur(8px); }
+.cookies p { margin: 0 0 10px; }
+.cookies-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.cookies-actions .btn { min-height: 36px; padding: 6px 14px; font-size: 13px; }
+@media (max-width: 560px) { .cookies { left: 16px; right: 16px; width: auto; bottom: auto; top: 108px; } }
