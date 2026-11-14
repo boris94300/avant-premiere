@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { scene as bus, type Focus, type LumiereLead, type Repere } from "@/lib/scene-bus";
+import { useLang } from "./Langue";
+import { t } from "@/lib/i18n";
 
 type V3 = [number, number, number];
 // Coordonnées dans l'espace d'origine du village ; dir = direction caméra depuis la cible, dist en unités monde.
@@ -21,6 +23,7 @@ export const REPERES: { id: Repere; libelle: string; aide: string; ancre: V3 }[]
 const MAX_LUMIERES = 48;
 
 export default function Village3D() {
+  useLang();
   const boite = useRef<HTMLDivElement>(null);
   const reperes = useRef<(HTMLButtonElement | null)[]>([]);
   const pointeurs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -281,10 +284,10 @@ export default function Village3D() {
   return (
     <div className="fond" ref={boite} aria-hidden={false}>
       <div className="fond-voile" aria-hidden="true" />
-      <nav className="reperes" aria-label="Éléments cliquables du village">
+      <nav className="reperes" aria-label={t("Éléments cliquables du village")}>
         {REPERES.map((r, i) => (
           <button key={r.id} type="button" className="repere" data-id={r.id} ref={(n) => { reperes.current[i] = n; }} onClick={() => clicRepere(r.id)}>
-            <i aria-hidden="true" /><span><small>{r.aide}</small>{r.libelle}</span>
+            <i aria-hidden="true" /><span><small>{t(r.aide)}</small>{t(r.libelle)}</span>
           </button>
         ))}
       </nav>

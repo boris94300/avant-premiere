@@ -13,12 +13,13 @@ export async function GET(req: Request) {
   const q = (url.searchParams.get("q") || "").trim().slice(0, 120);
   const profil = (url.searchParams.get("profil") || "entreprise") as keyof typeof PIPELINES;
   const pipeline = PIPELINES[profil];
+  const lang = url.searchParams.get("lang") === "en" ? "en" : "fr";
   const enc = new TextEncoder();
 
   const stream = new ReadableStream({
     async start(ctrl) {
       const emit = (e: Evenement) => ctrl.enqueue(enc.encode(`data: ${JSON.stringify(e)}\n\n`));
-      const agent = new Agent(emit);
+      const agent = new Agent(emit, lang);
       try {
         if (!q || !pipeline) throw new Error("Requête invalide");
         await pipeline(q, agent);

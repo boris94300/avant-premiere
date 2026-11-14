@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { OFFRES } from "@/config/site";
+import { useLang } from "./Langue";
+import { langue, locale, t } from "@/lib/i18n";
 
 type Offre = (typeof OFFRES)[number];
 const TEXTE = {
@@ -11,18 +13,20 @@ const TEXTE = {
 };
 
 export default function Offres() {
+  useLang();
   const [choix, setChoix] = useState<Offre | null>(null);
+  const en = langue() === "en";
   return (
     <>
       <div className="offres">
         {OFFRES.map((o) => (
           <button type="button" key={o.nom} className={`offre offre-btn${"phare" in o && o.phare ? " phare" : ""}`} onClick={() => setChoix(o)}>
-            {"phare" in o && o.phare && <span className="etiquette annonce" style={{ alignSelf: "flex-start" }}>Le plus choisi</span>}
-            <span className="offre-nom">{o.nom}</span>
-            <span className="offre-cible">{o.cible}</span>
-            <span className="prix">{o.prix} €<small> HT / mois</small></span>
-            <ul>{o.inclus.map((x) => <li key={x}>{x}</li>)}</ul>
-            <span className="offre-cta">{TEXTE.bouton} {o.nom}</span>
+            {"phare" in o && o.phare && <span className="etiquette annonce" style={{ alignSelf: "flex-start" }}>{t("Le plus choisi")}</span>}
+            <span className="offre-nom">{t(o.nom)}</span>
+            <span className="offre-cible">{t(o.cible)}</span>
+            <span className="prix">{en ? `€${o.prix}` : `${o.prix} €`}<small> {t("HT / mois")}</small></span>
+            <ul>{o.inclus.map((x) => <li key={x}>{t(x)}</li>)}</ul>
+            <span className="offre-cta">{t(TEXTE.bouton)} {t(o.nom)}</span>
           </button>
         ))}
       </div>
@@ -36,7 +40,10 @@ function Paiement({ offre, fermer }: { offre: Offre; fermer: () => void }) {
   const [etat, setEtat] = useState<"saisie" | "envoi" | "refus">("saisie");
   const [erreurs, setErreurs] = useState<Record<string, string>>({});
   const boite = useRef<HTMLDivElement>(null);
-  const ttc = (offre.prix * 1.2).toLocaleString("fr-FR", { minimumFractionDigits: 2 });
+  useLang();
+  const en = langue() === "en";
+  const prix = (n: number, d = 2) => { const v = n.toLocaleString(locale(), { minimumFractionDigits: d, maximumFractionDigits: d }); return en ? `€${v}` : `${v} €`; };
+  const ttc = prix(offre.prix * 1.2);
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => { if (e.key === "Escape") fermer(); };
@@ -56,12 +63,12 @@ function Paiement({ offre, fermer }: { offre: Offre; fermer: () => void }) {
   const payer = (ev: React.FormEvent) => {
     ev.preventDefault();
     const e: Record<string, string> = {};
-    if (!/^\S+@\S+\.\S+$/.test(v.email)) e.email = "Adresse e-mail invalide.";
-    if (v.carte.replace(/\s/g, "").length < 15) e.carte = "Numéro de carte incomplet.";
+    if (!/^\S+@\S+\.\S+$/.test(v.email)) e.email = t("Adresse e-mail invalide.");
+    if (v.carte.replace(/\s/g, "").length < 15) e.carte = t("Numéro de carte incomplet.");
     const [mm, aa] = v.exp.split(" / ").map(Number);
-    if (!mm || mm > 12 || !aa) e.exp = "Date invalide.";
-    if (v.cvc.length < 3) e.cvc = "Code incomplet.";
-    if (!v.nom.trim()) e.nom = "Nom requis.";
+    if (!mm || mm > 12 || !aa) e.exp = t("Date invalide.");
+    if (v.cvc.length < 3) e.cvc = t("Code incomplet.");
+    if (!v.nom.trim()) e.nom = t("Nom requis.");
     setErreurs(e);
     if (Object.keys(e).length) return;
     setEtat("envoi");
@@ -77,35 +84,35 @@ function Paiement({ offre, fermer }: { offre: Offre; fermer: () => void }) {
 
   return createPortal(
     <div className="paiement-fond" onClick={(e) => { if (e.target === e.currentTarget) fermer(); }}>
-      <div className="paiement" role="dialog" aria-modal="true" aria-label={`Paiement de l'offre ${offre.nom}`} ref={boite}>
+      <div className="paiement" role="dialog" aria-modal="true" aria-label={`${t("Paiement de l'offre")} ${t(offre.nom)}`} ref={boite}>
         <aside className="paiement-resume">
           <button type="button" className="paiement-retour" onClick={fermer}>← Avant-Première</button>
-          <p className="paiement-quoi">S'abonner à {offre.nom}</p>
-          <p className="paiement-prix">{offre.prix} €<small> HT par mois</small></p>
+          <p className="paiement-quoi">{t("S'abonner à")} {t(offre.nom)}</p>
+          <p className="paiement-prix">{prix(offre.prix, 0)}<small> {t("HT par mois")}</small></p>
           <dl>
-            <div><dt>Offre {offre.nom}</dt><dd>{offre.prix},00 €</dd></div>
-            <div><dt>TVA (20 %)</dt><dd>{(offre.prix * 0.2).toLocaleString("fr-FR", { minimumFractionDigits: 2 })} €</dd></div>
-            <div className="total"><dt>Total dû aujourd'hui</dt><dd>{ttc} €</dd></div>
+            <div><dt>{t("Offre")} {t(offre.nom)}</dt><dd>{prix(offre.prix)}</dd></div>
+            <div><dt>{t("TVA (20 %)")}</dt><dd>{prix(offre.prix * 0.2)}</dd></div>
+            <div className="total"><dt>{t("Total dû aujourd'hui")}</dt><dd>{ttc}</dd></div>
           </dl>
-          <p className="paiement-demo">{TEXTE.demo}</p>
+          <p className="paiement-demo">{t(TEXTE.demo)}</p>
         </aside>
         <form className="paiement-form" onSubmit={payer} noValidate>
-          <h2>Payer par carte</h2>
-          {champ("email", "E-mail", { type: "email", autoComplete: "email", placeholder: "vous@entreprise.fr" })}
+          <h2>{t("Payer par carte")}</h2>
+          {champ("email", t("E-mail"), { type: "email", autoComplete: "email", placeholder: t("vous@entreprise.fr") })}
           <fieldset className="carte-groupe">
-            <legend>Informations de carte</legend>
-            {champ("carte", "Numéro de carte", { inputMode: "numeric", autoComplete: "cc-number", placeholder: "1234 1234 1234 1234" })}
+            <legend>{t("Informations de carte")}</legend>
+            {champ("carte", t("Numéro de carte"), { inputMode: "numeric", autoComplete: "cc-number", placeholder: "1234 1234 1234 1234" })}
             <div className="deux">
-              {champ("exp", "Expiration", { inputMode: "numeric", autoComplete: "cc-exp", placeholder: "MM / AA" })}
+              {champ("exp", t("Expiration"), { inputMode: "numeric", autoComplete: "cc-exp", placeholder: t("MM / AA") })}
               {champ("cvc", "CVC", { inputMode: "numeric", autoComplete: "cc-csc", placeholder: "CVC" })}
             </div>
           </fieldset>
-          {champ("nom", "Nom du titulaire", { autoComplete: "cc-name", placeholder: "Nom complet" })}
-          {etat === "refus" && <p className="paiement-refus" role="alert">{TEXTE.refus}</p>}
+          {champ("nom", t("Nom du titulaire"), { autoComplete: "cc-name", placeholder: t("Nom complet") })}
+          {etat === "refus" && <p className="paiement-refus" role="alert">{t(TEXTE.refus)}</p>}
           <button type="submit" className="paiement-payer" disabled={etat === "envoi"}>
-            {etat === "envoi" ? <><span className="tourne" aria-hidden="true" />Traitement…</> : etat === "refus" ? "Réessayer" : `S'abonner · ${ttc} €`}
+            {etat === "envoi" ? <><span className="tourne" aria-hidden="true" />{t("Traitement…")}</> : etat === "refus" ? t("Réessayer") : `${t("S'abonner")} · ${ttc}`}
           </button>
-          <p className="paiement-mention">Sans engagement, résiliable à tout moment.</p>
+          <p className="paiement-mention">{t("Sans engagement, résiliable à tout moment.")}</p>
         </form>
       </div>
     </div>

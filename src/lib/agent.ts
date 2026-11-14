@@ -1,11 +1,16 @@
 import { outil, interroger, type Resultat } from "./hemicycle";
 import type { Etape, Evenement } from "./types";
+import type { Lang } from "./i18n";
+import { traduireEvenement } from "./i18n-evenements";
 
 export class Agent {
   credits = 0;
   appels = 0;
   t0 = Date.now();
-  constructor(private emit: (e: Evenement) => void) {}
+  private emit: (e: Evenement) => void;
+  constructor(emit: (e: Evenement) => void, public lang: Lang = "fr") { this.emit = (e) => emit(traduireEvenement(e, lang)); }
+  /** Langue de rédaction imposée à l'IA. */
+  get redaction() { return this.lang === "en" ? "en anglais (rédige en anglais ; garde tels quels, en français, les noms propres, les intitulés de marchés et les titres de textes de loi)" : "en français"; }
 
   envoyer(e: Evenement) { this.emit(e); }
 

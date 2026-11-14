@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef } from "react";
 import * as maplibregl from "maplibre-gl";
+import { t } from "@/lib/i18n";
 
 maplibregl.setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
 
@@ -105,13 +106,13 @@ export default function Carte({ valeurs, legende, focus, focusDept, points, form
   const n = Object.keys(valeurs).length;
   return (
     <div className="carte-zone">
-      <div ref={ref} style={{ position: "absolute", inset: 0 }} role="img" aria-label={`Carte de France : ${legende || "zone analysée"}. Le détail est disponible dans les listes ci-dessous.`} />
+      <div ref={ref} style={{ position: "absolute", inset: 0 }} role="img" aria-label={`${t("Carte de France")} : ${legende || t("zone analysée")}. ${t("Le détail est disponible dans les listes ci-dessous.")}`} />
       {titre && <div className="carte-titre"><span className="pastille-live" aria-hidden="true" />{titre}</div>}
       {n > 0 && (
         <div className="carte-legende" aria-hidden="true">
           {legende}
           <div className="degrade" />
-          <div className="bornes"><span>faible</span><span>{format(max)}</span></div>
+          <div className="bornes"><span>{t("faible")}</span><span>{format(max)}</span></div>
         </div>
       )}
     </div>

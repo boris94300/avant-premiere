@@ -1,6 +1,8 @@
 import { outil } from "@/lib/hemicycle";
 import { chat, MODELE, type Message } from "@/lib/llm";
 import { JEUX_AGENT } from "@/config/jeux";
+import type { Lang } from "@/lib/i18n";
+import { phraseEn } from "@/lib/i18n-evenements";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,8 +49,8 @@ const TOOLS = [
   },
 ];
 
-const SYSTEME = `Tu es l'agent de recherche d'Avant-Première, plateforme de veille sur la commande publique française. Aujourd'hui : ${new Date().toISOString().slice(0, 10)}.
-Tu réponds en français, de façon concise et structurée (listes à puces courtes, montants en €), sans emoji et sans tableau markdown. Tu utilises les outils pour lire les données en direct, puis tu réponds en citant les sources (nom du jeu). N'invente jamais de chiffre. 3 appels d'outils maximum.
+const systeme = (lang: Lang) => `Tu es l'agent de recherche d'Avant-Première, plateforme de veille sur la commande publique française. Aujourd'hui : ${new Date().toISOString().slice(0, 10)}.
+Tu réponds ${lang === "en" ? "en anglais (les intitulés de marchés et noms propres restent en français)" : "en français"}, de façon concise et structurée (listes à puces courtes, montants en €), sans emoji et sans tableau markdown. Tu utilises les outils pour lire les données en direct, puis tu réponds en citant les sources (nom du jeu). N'invente jamais de chiffre. 3 appels d'outils maximum.
 Astuces : les achats annoncés avant appel d'offres sont dans projets_achats_publics (filtre date_previsionnelle_de_publication gte, departement_s_d_execution_du_marche like "34" : valeurs multiples séparées par « | »). Les marchés attribués sont dans marches_publics (recherche sur l'objet ; acheteur_id = SIRET). La recherche plein texte n'accepte pas OR.
 Jeux disponibles :
 ${JEUX_AGENT.map((j) => `- ${j.jeu} : ${j.description} Colonnes : ${j.colonnes.join(", ")}. Tris : ${j.tris.join(", ")}.${j.filtre_obligatoire ? ` Filtre obligatoire sur : ${JSON.stringify(j.filtre_obligatoire)}.` : ""} ${j.mode_emploi}`).join("\n")}`;
@@ -99,13 +101,14 @@ async function executer(nom: string, args: any) {
 }
 
 export async function POST(req: Request) {
-  const { messages: historique = [] } = await req.json().catch(() => ({}));
+  const { messages: historique = [], lang: l } = await req.json().catch(() => ({}));
+  const lang: Lang = l === "en" ? "en" : "fr";
   const enc = new TextEncoder();
   const stream = new ReadableStream({
     async start(ctrl) {
       const emit = (e: any) => ctrl.enqueue(enc.encode(`data: ${JSON.stringify(e)}\n\n`));
       const messages: Message[] = [
-        { role: "system", content: SYSTEME },
+        { role: "system", content: systeme(lang) },
         ...historique.slice(-8).map((m: any) => ({ role: m.role === "user" ? "user" : "assistant", content: String(m.content).slice(0, 2000) })),
       ];
       let credits = 0;
@@ -118,15 +121,15 @@ export async function POST(req: Request) {
             const appel = depuisFuite(rep.content);
             rep = appel ? { ...rep, content: "", tool_calls: [appel] } : await chat(messages, { tools: tour < 3 ? TOOLS : undefined, max_tokens: 900, temperature: 0.2 });
           }
-          if (!rep.tool_calls?.length && fuite(rep.content)) rep = { ...rep, content: nettoyerFuite(rep.content) };
+          if (!rep.tool_calls?.length && fuite(rep.content)) rep = { ...rep, content: phraseEn(lang, nettoyerFuite(rep.content)) };
           if (tour === 3 && rep.tool_calls?.length) rep = { ...rep, tool_calls: undefined, content: "" };
           if (!rep.tool_calls?.length) {
             if (!rep.content?.trim()) {
               messages.push({ role: "user", content: "Réponds maintenant à la question initiale avec les données déjà obtenues, sans appeler d'outil." });
               rep = await chat(messages, { max_tokens: 900 });
-              rep = { ...rep, content: fuite(rep.content) ? nettoyerFuite(rep.content) : rep.content };
+              rep = { ...rep, content: fuite(rep.content) ? phraseEn(lang, nettoyerFuite(rep.content)) : rep.content };
             }
-            emit({ t: "reponse", texte: rep.content || "Je n'ai pas trouvé de réponse.", ms: Date.now() - t0, credits });
+            emit({ t: "reponse", texte: rep.content || phraseEn(lang, "Je n'ai pas trouvé de réponse."), ms: Date.now() - t0, credits });
             break;
           }
           messages.push({ role: "assistant", content: rep.content || "", tool_calls: rep.tool_calls });

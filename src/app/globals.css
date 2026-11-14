@@ -411,3 +411,10 @@ body:has(.scene-app) .pied { display: none; }
 .cookies-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .cookies-actions .btn { min-height: 36px; padding: 6px 14px; font-size: 13px; }
 @media (max-width: 560px) { .cookies { left: 16px; right: 16px; width: auto; bottom: auto; top: 108px; } }
+
+/* Bouton de langue */
+.langue { display: inline-flex; align-items: center; margin-left: 6px; border: 1px solid var(--ligne); border-radius: 8px; overflow: hidden; align-self: center; }
+.langue button { background: transparent; border: 0; color: var(--encre-3); font: 600 11px/1 var(--font-mono), monospace; letter-spacing: .04em; padding: 7px 8px; cursor: pointer; }
+.langue button[aria-pressed="true"] { background: var(--ligne); color: var(--encre); }
+.langue button:hover { color: var(--encre); }
+@media (max-width: 560px) { .entete-in .langue { order: 2; margin-left: auto; } .entete-in .nav { order: 3; flex-basis: 100%; } }

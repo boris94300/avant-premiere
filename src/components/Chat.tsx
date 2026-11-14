@@ -1,5 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { useLang } from "./Langue";
+import { t } from "@/lib/i18n";
+import { fDec } from "@/lib/format";
 
 type Appel = { id: string; nom: string; args: any; statut: "run" | "ok" | "err"; ms?: number; lignes?: number; source?: string; detail?: string };
 type Msg = { role: "user" | "assistant"; content: string; appels?: Appel[]; ms?: number };
@@ -23,6 +26,7 @@ function rendre(txt: string) {
 }
 
 export default function Chat() {
+  const lang = useLang();
   const [ouvert, setOuvert] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [saisie, setSaisie] = useState("");
@@ -34,13 +38,13 @@ export default function Chat() {
   useEffect(() => { if (ouvert) champ.current?.focus(); const esc = (e: KeyboardEvent) => e.key === "Escape" && setOuvert(false); window.addEventListener("keydown", esc); return () => window.removeEventListener("keydown", esc); }, [ouvert]);
 
   async function envoyer(texte = saisie) {
-    const t = texte.trim(); if (!t || enCours) return;
-    const histo: Msg[] = [...msgs, { role: "user", content: t }];
+    const tx = texte.trim(); if (!tx || enCours) return;
+    const histo: Msg[] = [...msgs, { role: "user", content: tx }];
     setMsgs([...histo, { role: "assistant", content: "", appels: [] }]);
     setSaisie(""); setEnCours(true);
     const maj = (f: (m: Msg) => Msg) => setMsgs((ms) => ms.map((m, i) => (i === ms.length - 1 ? f(m) : m)));
     try {
-      const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: histo.map(({ role, content }) => ({ role, content })) }) });
+      const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lang, messages: histo.map(({ role, content }) => ({ role, content })) }) });
       const lecteur = res.body!.getReader(); const dec = new TextDecoder(); let tampon = "";
       for (;;) {
         const { value, done } = await lecteur.read(); if (done) break;
@@ -51,31 +55,31 @@ export default function Chat() {
           const e = JSON.parse(p.slice(5));
           if (e.t === "outil") maj((m) => { const a = m.appels || []; const i = a.findIndex((x) => x.id === e.id); return { ...m, appels: i >= 0 ? a.map((x, j) => (j === i ? e : x)) : [...a, e] }; });
           if (e.t === "reponse") maj((m) => ({ ...m, content: e.texte, ms: e.ms }));
-          if (e.t === "erreur") maj((m) => ({ ...m, content: "Désolé, une erreur est survenue : " + e.message }));
+          if (e.t === "erreur") maj((m) => ({ ...m, content: t("Désolé, une erreur est survenue : ") + e.message }));
         }
       }
-    } catch { maj((m) => ({ ...m, content: "Connexion interrompue, réessayez." })); }
+    } catch { maj((m) => ({ ...m, content: t("Connexion interrompue, réessayez.") })); }
     setEnCours(false);
   }
 
   if (!ouvert) return (
     <button className="chat-bouton" type="button" onClick={() => setOuvert(true)} aria-haspopup="dialog">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" /></svg>
-      Demander à l'agent
+      {t("Demander à l'agent")}
     </button>
   );
 
   return (
-    <div className="chat-panneau" role="dialog" aria-modal="false" aria-label="Agent de recherche">
+    <div className="chat-panneau" role="dialog" aria-modal="false" aria-label={t("Agent de recherche")}>
       <div className="panneau-tete">
-        <div><h2 style={{ fontSize: 15, margin: 0 }}>Agent de recherche</h2><div style={{ fontSize: 12, color: "var(--encre-3)" }}>Choisit lui-même les données publiques à interroger</div></div>
-        <button type="button" className="btn btn-fantome" onClick={() => setOuvert(false)} aria-label="Fermer l'agent">Fermer</button>
+        <div><h2 style={{ fontSize: 15, margin: 0 }}>{t("Agent de recherche")}</h2><div style={{ fontSize: 12, color: "var(--encre-3)" }}>{t("Choisit lui-même les données publiques à interroger")}</div></div>
+        <button type="button" className="btn btn-fantome" onClick={() => setOuvert(false)} aria-label={t("Fermer l'agent")}>{t("Fermer")}</button>
       </div>
       <div className="chat-fil" ref={fil} aria-live="polite">
         {msgs.length === 0 && (
           <div className="suggestions">
-            <p style={{ margin: 0, fontSize: 14, color: "var(--encre-2)" }}>Posez une question sur la commande publique, les entreprises ou les collectivités :</p>
-            {SUGGESTIONS.map((s) => <button key={s} type="button" onClick={() => envoyer(s)}>{s}</button>)}
+            <p style={{ margin: 0, fontSize: 14, color: "var(--encre-2)" }}>{t("Posez une question sur la commande publique, les entreprises ou les collectivités :")}</p>
+            {SUGGESTIONS.map((s) => <button key={s} type="button" onClick={() => envoyer(t(s))}>{t(s)}</button>)}
           </div>
         )}
         {msgs.map((m, i) => (
@@ -85,23 +89,23 @@ export default function Chat() {
                 <span className={`icone-etat ${a.statut}`} style={{ width: 14, height: 14, flex: "none" }} aria-hidden="true" />
                 <span>
                   <b>{a.nom}</b>({a.args?.jeu || a.args?.q || ""}{a.args?.recherche ? ` · « ${a.args.recherche} »` : ""})
-                  {a.statut === "ok" && <> → {a.lignes ?? 0} lignes · {((a.ms || 0) / 1000).toFixed(1).replace(".", ",")} s{a.source ? ` · ${a.source}` : ""}</>}
+                  {a.statut === "ok" && <> → {a.lignes ?? 0} {t("lignes")} · {fDec((a.ms || 0) / 1000)} s{a.source ? ` · ${a.source}` : ""}</>}
                   {a.statut === "err" && <> → {a.detail}</>}
                 </span>
               </div>
             ))}
             {(m.content || m.role === "assistant") && (
               <div className={`bulle ${m.role}`}>
-                {m.content ? (m.role === "assistant" ? rendre(m.content) : m.content) : <span style={{ color: "var(--encre-3)" }}>L'agent réfléchit et interroge les sources…</span>}
+                {m.content ? (m.role === "assistant" ? rendre(m.content) : m.content) : <span style={{ color: "var(--encre-3)" }}>{t("L'agent réfléchit et interroge les sources…")}</span>}
               </div>
             )}
           </div>
         ))}
       </div>
       <form className="chat-saisie" onSubmit={(e) => { e.preventDefault(); envoyer(); }}>
-        <label htmlFor="chat-q" className="sr">Votre question</label>
-        <textarea id="chat-q" ref={champ} rows={1} value={saisie} onChange={(e) => setSaisie(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); envoyer(); } }} placeholder="Ex. : hôpitaux d'Occitanie qui achètent du nettoyage" />
-        <button className="btn" type="submit" disabled={enCours || !saisie.trim()}>Envoyer</button>
+        <label htmlFor="chat-q" className="sr">{t("Votre question")}</label>
+        <textarea id="chat-q" ref={champ} rows={1} value={saisie} onChange={(e) => setSaisie(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); envoyer(); } }} placeholder={t("Ex. : hôpitaux d'Occitanie qui achètent du nettoyage")} />
+        <button className="btn" type="submit" disabled={enCours || !saisie.trim()}>{t("Envoyer")}</button>
       </form>
     </div>
   );

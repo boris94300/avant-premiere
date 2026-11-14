@@ -4,7 +4,9 @@ import dynamic from "next/dynamic";
 import { PROFILS, SITE, type ProfilId } from "@/config/site";
 import { caAtteignable, exporterCsv, exporterPdf, envoyerAvecPdf, decouperMail } from "@/lib/dossier";
 import type { Concurrent, Etape, Evenement, Kpi, Lead } from "@/lib/types";
-import { FORMATS, fDate, fEuros, fHeure, fPourcent } from "@/lib/format";
+import { FORMATS, fDate, fDec, fEuros, fHeure, fPourcent } from "@/lib/format";
+import { useLang } from "./Langue";
+import { t } from "@/lib/i18n";
 import Compteur from "./Compteur";
 import Chat from "./Chat";
 import { scene, type Focus } from "@/lib/scene-bus";
@@ -34,6 +36,7 @@ const SOURCES = [
 ];
 
 export default function Tableau() {
+  const lang = useLang();
   const [profil, setProfil] = useState<ProfilId>("entreprise");
   const [q, setQ] = useState("");
   const [enCours, setEnCours] = useState(false);
@@ -78,6 +81,15 @@ export default function Tableau() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Changement de langue : l'analyse affichée est relancée pour que les textes de l'agent suivent.
+  const langVue = useRef(lang);
+  useEffect(() => {
+    if (langVue.current === lang) return;
+    langVue.current = lang;
+    if (etat && q.trim()) lancer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang]);
+
   function partager() {
     const url = `${window.location.origin}/?profil=${profil}&q=${encodeURIComponent(q)}`;
     if (navigator.share) navigator.share({ title: `Avant-Première — ${q}`, url }).catch(() => {});
@@ -89,7 +101,7 @@ export default function Tableau() {
     source.current?.close();
     setQ(v); setEnCours(true); setFiltre("tous"); setNbLeads(8);
     setEtat({ etapes: [] }); setVolet("resultats"); setLeadChoisi(null);
-    const es = new EventSource(`/api/analyse?profil=${p}&q=${encodeURIComponent(v)}`);
+    const es = new EventSource(`/api/analyse?profil=${p}&lang=${lang}&q=${encodeURIComponent(v)}`);
     source.current = es;
     es.onmessage = (m) => {
       const e = JSON.parse(m.data) as Evenement;
@@ -122,69 +134,69 @@ export default function Tableau() {
 
   const formulaire = (
     <form className="recherche" role="search" onSubmit={(e) => { e.preventDefault(); lancer(); }}>
-      <label htmlFor="q" className="sr">{P.question}</label>
-      <input id="q" value={q} onChange={(e) => setQ(e.target.value)} placeholder={P.placeholder} autoComplete="off" enterKeyHint="search" />
-      <button className="btn" type="submit" disabled={enCours || !q.trim()}>{enCours ? "Analyse…" : "Lancer l'agent"}</button>
+      <label htmlFor="q" className="sr">{t(P.question)}</label>
+      <input id="q" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t(P.placeholder)} autoComplete="off" enterKeyHint="search" />
+      <button className="btn" type="submit" disabled={enCours || !q.trim()}>{enCours ? t("Analyse…") : t("Lancer l'agent")}</button>
     </form>
   );
   const selecteur = (
-    <div className="profils" role="group" aria-label="À qui s'adresse l'analyse">
+    <div className="profils" role="group" aria-label={t("À qui s'adresse l'analyse")}>
       {(Object.keys(PROFILS) as ProfilId[]).map((p) => (
-        <button key={p} type="button" aria-pressed={profil === p} onClick={() => changerProfil(p)}>{PROFILS[p].libelle}</button>
+        <button key={p} type="button" aria-pressed={profil === p} onClick={() => changerProfil(p)}>{t(PROFILS[p].libelle)}</button>
       ))}
     </div>
   );
   const exemples = (
-    <div className="exemples"><span>Essayer :</span>
+    <div className="exemples"><span>{t("Essayer :")}</span>
       {P.exemples.map((x) => <button key={x} type="button" onClick={() => lancer(x)}>{x}</button>)}
     </div>
   );
 
   const podium = useMemo(() => [...(etat?.leads || [])].sort((x, y) => y.score - x.score).slice(0, 3), [etat?.leads]);
   const choisi = leadChoisi ? etat?.leads?.find((l) => l.id === leadChoisi) : undefined;
-  const fermer = <button type="button" className="fermer" onClick={() => setVolet("accueil")} aria-label="Fermer et revenir à la vue d'ensemble">Vue d'ensemble</button>;
+  const fermer = <button type="button" className="fermer" onClick={() => setVolet("accueil")} aria-label={t("Fermer et revenir à la vue d'ensemble")}>{t("Vue d'ensemble")}</button>;
 
   return (
     <div className="scene-app" data-volet={volet}>
       {volet === "accueil" && (
         <section className="intro">
           <div className="intro-actions">
-            <button type="button" className="btn" onClick={() => setVolet("recherche")}>Allumer la lanterne</button>
-            {etat && <button type="button" className="btn btn-fantome" onClick={() => setVolet("resultats")}>Revoir les résultats</button>}
+            <button type="button" className="btn" onClick={() => setVolet("recherche")}>{t("Allumer la lanterne")}</button>
+            {etat && <button type="button" className="btn btn-fantome" onClick={() => setVolet("resultats")}>{t("Revoir les résultats")}</button>}
           </div>
-          <p className="astuce">Cliquez sur la lanterne, l'arbre, le pont ou le moulin.</p>
+          <p className="astuce">{t("Cliquez sur la lanterne, l'arbre, le pont ou le moulin.")}</p>
         </section>
       )}
 
       {volet === "recherche" && (
-        <section className="volet petit" aria-label="Recherche">
-          <div className="volet-tete"><div><small>La lanterne</small><h2>Que voulez-vous éclairer ?</h2></div>{fermer}</div>
+        <section className="volet petit" aria-label={t("Recherche")}>
+          <div className="volet-tete"><div><small>{t("La lanterne")}</small><h2>{t("Que voulez-vous éclairer ?")}</h2></div>{fermer}</div>
           {selecteur}
-          <p className="promesse">{P.promesse}</p>
+          <p className="promesse">{t(P.promesse)}</p>
           {formulaire}
           {exemples}
         </section>
       )}
 
       {volet === "profils" && (
-        <div className="profils-mini" role="group" aria-label="Choisir un profil">
+        <div className="profils-mini" role="group" aria-label={t("Choisir un profil")}>
           {(Object.keys(PROFILS) as ProfilId[]).map((p) => (
-            <button key={p} type="button" aria-pressed={profil === p} onClick={() => { changerProfil(p); setVolet("recherche"); }}>{PROFILS[p].libelle}</button>
+            <button key={p} type="button" aria-pressed={profil === p} onClick={() => { changerProfil(p); setVolet("recherche"); }}>{t(PROFILS[p].libelle)}</button>
           ))}
         </div>
       )}
 
       {volet === "resultats" && (
-        <section className="volet grand" aria-label="Résultats de l'analyse">
+        <section className="volet grand" aria-label={t("Résultats de l'analyse")}>
           <div className="volet-tete">
-            <div><small>Le pont</small><h2>{!etat ? "Aucune analyse pour l'instant" : enCours ? "Les lanternes cherchent…" : `${etat.leads?.length ?? 0} opportunités éclairées`}</h2></div>
-            <span className="etat-live">{etat && <><span className="pastille-live" aria-hidden="true" />{enCours ? "en direct" : "terminé"}</>}</span>
+            <div><small>{t("Le pont")}</small><h2>{!etat ? t("Aucune analyse pour l'instant") : enCours ? t("Les lanternes cherchent…") : `${etat.leads?.length ?? 0} ${t("opportunités éclairées")}`}</h2></div>
+            <span className="etat-live">{etat && <><span className="pastille-live" aria-hidden="true" />{enCours ? t("en direct") : t("terminé")}</>}</span>
             {fermer}
           </div>
           <div className="barre-recherche-dash">{selecteur}{formulaire}</div>
-          {!etat ? <>{exemples}<p className="vide">Lancez une analyse : chaque opportunité trouvée allumera une lumière au-dessus du village.</p></> : (<>
+          {!etat ? <>{exemples}<p className="vide">{t("Lancez une analyse : chaque opportunité trouvée allumera une lumière au-dessus du village.")}</p></> : (<>
             {podium.length > 0 && (
-              <ol className="podium" aria-label="Les trois meilleures opportunités">
+              <ol className="podium" aria-label={t("Les trois meilleures opportunités")}>
                 {podium.map((l, i) => (
                   <li key={l.id}>
                     <button type="button" aria-pressed={leadChoisi === l.id} onClick={() => setLeadChoisi(l.id)}>
@@ -200,31 +212,31 @@ export default function Tableau() {
             )}
             {etat.fin && etat.leads && etat.leads.length > 0 && (
               <div className="actions-mini">
-                {profil === "entreprise" && <span className="ca" title="Marchés à votre taille à moins de 12 mois, en montant annuel pondéré par le score, plafonné à 30 % de votre chiffre d'affaires">≈ <b>{fEuros(caAtteignable(etat.leads, etat.cible?.ca))}</b> atteignables sur 12 mois</span>}
-                <button type="button" onClick={() => exporterPdf({ cible: etat.cible, kpis: etat.kpis, leads: etat.leads!, concurrents: etat.concurrents, textes: etat.parlement, synthese: etat.synthese?.texte, mail: etat.synthese?.mail, destinataire: etat.synthese?.destinataire })}>Dossier PDF</button>
+                {profil === "entreprise" && <span className="ca" title={t("Marchés à votre taille à moins de 12 mois, en montant annuel pondéré par le score, plafonné à 30 % de votre chiffre d'affaires")}>≈ <b>{fEuros(caAtteignable(etat.leads, etat.cible?.ca))}</b> {t("atteignables sur 12 mois")}</span>}
+                <button type="button" onClick={() => exporterPdf({ cible: etat.cible, kpis: etat.kpis, leads: etat.leads!, concurrents: etat.concurrents, textes: etat.parlement, synthese: etat.synthese?.texte, mail: etat.synthese?.mail, destinataire: etat.synthese?.destinataire })}>{t("Dossier PDF")}</button>
                 <button type="button" onClick={() => exporterCsv(etat.leads!, etat.cible?.titre || profil)}>Excel</button>
-                {etat.synthese?.mail && <button type="button" title="Le mail avec le dossier PDF en pièce jointe" onClick={() => envoyerAvecPdf({ cible: etat.cible, kpis: etat.kpis, leads: etat.leads!, concurrents: etat.concurrents, textes: etat.parlement, synthese: etat.synthese?.texte, mail: etat.synthese?.mail, destinataire: etat.synthese?.destinataire })}>Mail + PDF</button>}
-                {etat.synthese?.mail && <a href={lienGmail(etat.synthese.mail, etat.synthese.destinataire)} target="_blank" rel="noreferrer" title={etat.synthese.destinataire ? `À : ${etat.synthese.destinataire}` : "Destinataire à compléter"}>Gmail</a>}
+                {etat.synthese?.mail && <button type="button" title={t("Le mail avec le dossier PDF en pièce jointe")} onClick={() => envoyerAvecPdf({ cible: etat.cible, kpis: etat.kpis, leads: etat.leads!, concurrents: etat.concurrents, textes: etat.parlement, synthese: etat.synthese?.texte, mail: etat.synthese?.mail, destinataire: etat.synthese?.destinataire })}>{t("Mail + PDF")}</button>}
+                {etat.synthese?.mail && <a href={lienGmail(etat.synthese.mail, etat.synthese.destinataire)} target="_blank" rel="noreferrer" title={etat.synthese.destinataire ? `${t("À :")} ${etat.synthese.destinataire}` : t("Destinataire à compléter")}>Gmail</a>}
               </div>
             )}
             {choisi && (
               <div className="lead-choisi" role="status">
-                <div className="volet-tete"><div><small>Lumière sélectionnée · score {choisi.score}/100</small><h3>{nettoyerTitre(choisi.titre)}</h3></div><button type="button" className="fermer" onClick={() => setLeadChoisi(null)}>Fermer</button></div>
+                <div className="volet-tete"><div><small>{t("Lumière sélectionnée")} · score {choisi.score}/100</small><h3>{nettoyerTitre(choisi.titre)}</h3></div><button type="button" className="fermer" onClick={() => setLeadChoisi(null)}>{t("Fermer")}</button></div>
                 <div className="acheteur">{choisi.acheteur}</div>
-                <div className="etiquettes"><span className={`etiquette ${choisi.type}`}>{choisi.type === "annonce" ? "Annoncé avant appel d'offres" : choisi.type === "renouvellement" ? "Renouvellement prédit" : "Projet subventionné"}</span><span className="etiquette">{choisi.montantLibelle}</span><span className="etiquette">{fDate(choisi.date)}</span></div>
-                <ul className="raisons">{choisi.raisons.map((r) => <li key={r}>{r}</li>)}{choisi.lien && <li><a href={choisi.lien} target="_blank" rel="noreferrer">Voir la consultation</a></li>}</ul>
+                <div className="etiquettes"><span className={`etiquette ${choisi.type}`}>{t(choisi.type === "annonce" ? "Annoncé avant appel d'offres" : choisi.type === "renouvellement" ? "Renouvellement prédit" : "Projet subventionné")}</span><span className="etiquette">{choisi.montantLibelle}</span><span className="etiquette">{fDate(choisi.date)}</span></div>
+                <ul className="raisons">{choisi.raisons.map((r) => <li key={r}>{r}</li>)}{choisi.lien && <li><a href={choisi.lien} target="_blank" rel="noreferrer">{t("Voir la consultation")}</a></li>}</ul>
               </div>
             )}
       <div className="dash">
-        <aside className="colonne-agent panneau" aria-label="Journal de l'agent">
+        <aside className="colonne-agent panneau" aria-label={t("Journal de l'agent")}>
           <div className="panneau-tete">
-            <h2>Agent prospecteur {enCours && <span className="sr">en cours</span>}</h2>
-            <div className="compteurs" aria-live="polite"><span><b>{etat.etapes.filter((e) => e.statut === "ok").length}</b> étapes</span><span><b>{creditsLive}</b> crédits</span></div>
+            <h2>{t("Agent prospecteur")} {enCours && <span className="sr">{t("en cours")}</span>}</h2>
+            <div className="compteurs" aria-live="polite"><span><b>{etat.etapes.filter((e) => e.statut === "ok").length}</b> {t("étapes")}</span><span><b>{creditsLive}</b> {t("crédits")}</span></div>
           </div>
           <ol className="flux" aria-live="polite">
             {etat.etapes.map((e) => (
               <li key={e.id}>
-                <span className={`icone-etat ${e.statut}`} aria-label={e.statut === "run" ? "en cours" : e.statut === "ok" ? "terminé" : "erreur"}>
+                <span className={`icone-etat ${e.statut}`} aria-label={t(e.statut === "run" ? "en cours" : e.statut === "ok" ? "terminé" : "erreur")}>
                   {e.statut === "ok" && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true"><path d="M5 12l5 5L20 7" /></svg>}
                   {e.statut === "err" && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>}
                 </span>
@@ -234,9 +246,9 @@ export default function Tableau() {
                   {e.statut !== "run" && (
                     <div className="meta">
                       {e.outil && <span>{e.outil}</span>}
-                      {e.ms != null && <span>{(e.ms / 1000).toFixed(1).replace(".", ",")} s</span>}
+                      {e.ms != null && <span>{fDec(e.ms / 1000)} s</span>}
                       {!!e.credits && <span>{e.credits} cr.</span>}
-                      {e.lu_le && <span>lu à {fHeure(e.lu_le)}</span>}
+                      {e.lu_le && <span>{t("lu à")} {fHeure(e.lu_le)}</span>}
                       {e.source && <span>{e.source}</span>}
                     </div>
                   )}
@@ -245,13 +257,13 @@ export default function Tableau() {
             ))}
           </ol>
           {etat.fin && <div className="panneau-corps" style={{ borderTop: "1px solid var(--ligne)", fontSize: 13, color: "var(--encre-2)" }}>
-            Terminé en <b className="mono">{(etat.fin.ms / 1000).toFixed(1).replace(".", ",")} s</b> — {etat.fin.appels} appels live, {etat.fin.credits} crédits Hémicycle.
+            {t("Terminé en")} <b className="mono">{fDec(etat.fin.ms / 1000)} s</b> — {etat.fin.appels} {t("appels live")}, {etat.fin.credits} {t("crédits Hémicycle")}.
           </div>}
         </aside>
 
         <div style={{ display: "grid", gap: 16, minWidth: 0 }}>
           {etat.erreur && <div className="erreur" role="alert">{etat.erreur}</div>}
-          <Carte valeurs={etat.carte?.valeurs || {}} legende={etat.carte?.legende || ""} focus={etat.carte?.focus} focusDept={etat.carte?.focusDept} points={etat.carte?.points} format={formatCarte} titre={etat.cible ? etat.cible.titre : "Recherche en cours…"} />
+          <Carte valeurs={etat.carte?.valeurs || {}} legende={etat.carte?.legende || ""} focus={etat.carte?.focus} focusDept={etat.carte?.focusDept} points={etat.carte?.points} format={formatCarte} titre={etat.cible ? etat.cible.titre : t("Recherche en cours…")} />
 
           {etat.kpis ? (
             <div className="kpis">
@@ -266,15 +278,15 @@ export default function Tableau() {
           ) : enCours && <div className="kpis">{[0, 1, 2, 3].map((i) => <div className="kpi" key={i}><div className="squelette" style={{ height: 30 }} /><div className="squelette" /></div>)}</div>}
 
           {etat.cible && (
-            <section className="panneau panneau-corps cible" aria-label="Fiche">
+            <section className="panneau panneau-corps cible" aria-label={t("Fiche")}>
               <div><h2>{etat.cible.titre}</h2><p className="sous">{etat.cible.sousTitre}</p></div>
               <dl>{etat.cible.details.map((d) => <div key={d.label}><dt>{d.label}</dt><dd>{d.valeur}</dd></div>)}</dl>
             </section>
           )}
 
           {etat.synthese && (
-            <section className="panneau" aria-label="Synthèse de l'agent">
-              <div className="panneau-tete"><h3>Synthèse de l'agent</h3><span className="etiquette">IA · données citées</span></div>
+            <section className="panneau" aria-label={t("Synthèse de l'agent")}>
+              <div className="panneau-tete"><h3>{t("Synthèse de l'agent")}</h3><span className="etiquette">{t("IA · données citées")}</span></div>
               <div className="panneau-corps">
                 <p className="synthese">{etat.synthese.texte}</p>
               </div>
@@ -282,33 +294,33 @@ export default function Tableau() {
           )}
 
           <div className="grille-2">
-            <section className="panneau" aria-label={etat.leadsTitre || "Opportunités"}>
+            <section className="panneau" aria-label={etat.leadsTitre || t("Opportunités")}>
               <div className="panneau-tete" style={{ flexWrap: "wrap" }}>
-                <h3>{etat.leadsTitre || "Opportunités"} {etat.leads && <span className="mono" style={{ color: "var(--encre-3)" }}>({etat.leads.length})</span>}</h3>
-                {types.length > 1 && <div className="filtres" role="group" aria-label="Filtrer">
-                  {(["tous", ...types] as const).map((t) => <button key={t} type="button" aria-pressed={filtre === t} onClick={() => setFiltre(t)}>{t === "tous" ? "Tous" : t === "annonce" ? "Annoncés" : t === "renouvellement" ? "À renouveler" : "Subventions"}</button>)}
+                <h3>{etat.leadsTitre || t("Opportunités")} {etat.leads && <span className="mono" style={{ color: "var(--encre-3)" }}>({etat.leads.length})</span>}</h3>
+                {types.length > 1 && <div className="filtres" role="group" aria-label={t("Filtrer")}>
+                  {(["tous", ...types] as const).map((ty) => <button key={ty} type="button" aria-pressed={filtre === ty} onClick={() => setFiltre(ty)}>{t(ty === "tous" ? "Tous" : ty === "annonce" ? "Annoncés" : ty === "renouvellement" ? "À renouveler" : "Subventions")}</button>)}
                 </div>}
               </div>
               {leads.length > 0 && profil !== "etat" && <Frise leads={leads} />}
               {!etat.leads && enCours ? <div className="panneau-corps">{[0, 1, 2].map((i) => <div key={i} className="squelette" style={{ height: 40 }} />)}</div>
-                : leads.length === 0 ? <p className="vide">Aucune opportunité trouvée pour cette recherche.</p>
+                : leads.length === 0 ? <p className="vide">{t("Aucune opportunité trouvée pour cette recherche.")}</p>
                 : <>
                   <ul className="leads">{leads.slice(0, nbLeads).map((l, i) => <LigneLead key={l.id} l={l} i={i} profil={profil} />)}</ul>
-                  {leads.length > nbLeads && <div className="panneau-corps" style={{ borderTop: "1px solid var(--ligne)" }}><button type="button" className="btn btn-fantome" onClick={() => setNbLeads(nbLeads + 12)}>Voir plus ({leads.length - nbLeads} restantes)</button></div>}
+                  {leads.length > nbLeads && <div className="panneau-corps" style={{ borderTop: "1px solid var(--ligne)" }}><button type="button" className="btn btn-fantome" onClick={() => setNbLeads(nbLeads + 12)}>{t("Voir plus")} ({leads.length - nbLeads} {t("restantes")})</button></div>}
                 </>}
             </section>
 
             <div style={{ display: "grid", gap: 16 }}>
-              <section className="panneau" aria-label={etat.concTitre || "Concurrents"}>
-                <div className="panneau-tete"><h3>{etat.concTitre || "Concurrents"}</h3></div>
+              <section className="panneau" aria-label={etat.concTitre || t("Concurrents")}>
+                <div className="panneau-tete"><h3>{etat.concTitre || t("Concurrents")}</h3></div>
                 <div className="panneau-corps">
-                  {!etat.concurrents ? <div className="squelette" /> : etat.concurrents.length === 0 ? <p className="vide">Pas de titulaire identifié.</p> : (
+                  {!etat.concurrents ? <div className="squelette" /> : etat.concurrents.length === 0 ? <p className="vide">{t("Pas de titulaire identifié.")}</p> : (
                     <ul className="barres">
                       {etat.concurrents.map((c) => (
                         <li key={c.siret}>
-                          <div className="nom"><span>{c.nom}{c.vous ? " (vous)" : ""}</span><span>{fEuros(c.montant)}</span></div>
+                          <div className="nom"><span>{c.nom}{c.vous ? ` ${t("(vous)")}` : ""}</span><span>{fEuros(c.montant)}</span></div>
                           <div className="barre"><i style={{ width: `${(c.montant / etat.concurrents![0].montant) * 100}%`, background: c.vous ? "var(--bleu)" : undefined }} /></div>
-                          <div className="sub">{c.marches} marché(s) · {c.offresMoy ? `${c.offresMoy.toFixed(1).replace(".", ",")} offres en moyenne face à lui` : "offres non communiquées"}</div>
+                          <div className="sub">{c.marches} {t("marché(s)")} · {c.offresMoy ? `${fDec(c.offresMoy)} ${t("offres en moyenne face à lui")}` : t("offres non communiquées")}</div>
                         </li>
                       ))}
                     </ul>
@@ -316,8 +328,8 @@ export default function Tableau() {
                 </div>
               </section>
               {etat.parlement && etat.parlement.length > 0 && (
-                <section className="panneau" aria-label="Au Parlement">
-                  <div className="panneau-tete"><h3>Au Parlement : commande publique</h3></div>
+                <section className="panneau" aria-label={t("Au Parlement")}>
+                  <div className="panneau-tete"><h3>{t("Au Parlement : commande publique")}</h3></div>
                   <ul className="parl panneau-corps">{etat.parlement.map((p, i) => <li key={i}><b>{p.titre}</b><span>{p.sousTitre}…</span></li>)}</ul>
                 </section>
               )}
@@ -325,11 +337,11 @@ export default function Tableau() {
           </div>
           {etat.fin && (
             <div className="bandeau-fin" aria-live="polite">
-              <span>Analyse terminée en <b>{(etat.fin.ms / 1000).toFixed(1).replace(".", ",")} s</b></span>
-              <span><b>{etat.fin.appels}</b> appels aux sources officielles</span>
-              <span><b>{etat.fin.credits}</b> crédits Hémicycle</span>
-              <span>Aucune donnée en cache : tout a été lu maintenant.</span>
-              <button type="button" className="btn btn-fantome" onClick={partager}>{copie ? "Lien copié" : "Partager l'analyse"}</button>
+              <span>{t("Analyse terminée en")} <b>{fDec(etat.fin.ms / 1000)} s</b></span>
+              <span><b>{etat.fin.appels}</b> {t("appels aux sources officielles")}</span>
+              <span><b>{etat.fin.credits}</b> {t("crédits Hémicycle")}</span>
+              <span>{t("Aucune donnée en cache : tout a été lu maintenant.")}</span>
+              <button type="button" className="btn btn-fantome" onClick={partager}>{copie ? t("Lien copié") : t("Partager l'analyse")}</button>
             </div>
           )}
         </div>
@@ -346,21 +358,21 @@ export default function Tableau() {
 function LigneLead({ l, i, profil }: { l: Lead; i: number; profil: ProfilId }) {
   const [ouvert, setOuvert] = useState(false);
   const couleur = l.score >= 75 ? "rgba(74,222,128,.2)" : l.score >= 55 ? "rgba(255,190,121,.22)" : "rgba(255,255,255,.08)";
-  const libType = l.type === "annonce" ? "Annoncé avant appel d'offres" : l.type === "renouvellement" ? (profil === "etat" ? "Concurrence faible" : "Renouvellement prédit") : "Projet subventionné";
+  const libType = t(l.type === "annonce" ? "Annoncé avant appel d'offres" : l.type === "renouvellement" ? (profil === "etat" ? "Concurrence faible" : "Renouvellement prédit") : "Projet subventionné");
   return (
     <li className="lead" style={{ animationDelay: `${Math.min(i, 10) * 45}ms` }}>
-      <div className="jauge" style={{ background: couleur }} aria-label={`Score ${l.score} sur 100`}><div>{l.score}<small>/100</small></div></div>
+      <div className="jauge" style={{ background: couleur }} aria-label={`Score ${l.score} ${t("sur")} 100`}><div>{l.score}<small>/100</small></div></div>
       <button className="ouvrir" type="button" aria-expanded={ouvert} onClick={() => setOuvert(!ouvert)}>
         <h4>{nettoyerTitre(l.titre)}</h4>
         <div className="acheteur">{l.acheteur}</div>
         <div className="etiquettes">
           <span className={`etiquette ${l.type}`}>{libType}</span>
           <span className="etiquette">{l.montantLibelle}</span>
-          {l.horsTaille && <span className="etiquette hors-taille">Trop gros pour votre taille</span>}
-          {profil !== "etat" && l.type !== "subvention" && <span className="etiquette">{l.type === "annonce" ? "Publication" : "Relance estimée"} : {fDate(l.date)}</span>}
-          {l.depts.length > 0 && <span className="etiquette">{l.depts.length > 3 ? `${l.depts.length} départements` : `Dép. ${l.depts.join(", ")}`}</span>}
+          {l.horsTaille && <span className="etiquette hors-taille">{t("Trop gros pour votre taille")}</span>}
+          {profil !== "etat" && l.type !== "subvention" && <span className="etiquette">{t(l.type === "annonce" ? "Publication" : "Relance estimée")} : {fDate(l.date)}</span>}
+          {l.depts.length > 0 && <span className="etiquette">{l.depts.length > 3 ? `${l.depts.length} ${t("départements")}` : `${t("Dép.")} ${l.depts.join(", ")}`}</span>}
         </div>
-        {ouvert && <ul className="raisons">{l.raisons.map((r) => <li key={r}>{r}</li>)}{l.lien && <li><a href={l.lien} target="_blank" rel="noreferrer">Voir la consultation</a></li>}</ul>}
+        {ouvert && <ul className="raisons">{l.raisons.map((r) => <li key={r}>{r}</li>)}{l.lien && <li><a href={l.lien} target="_blank" rel="noreferrer">{t("Voir la consultation")}</a></li>}</ul>}
       </button>
     </li>
   );
@@ -374,7 +386,7 @@ function Frise({ leads }: { leads: Lead[] }) {
   const pos = (t: number) => `${Math.max(1, Math.min(99, ((t - t0) / (t1 - t0)) * 100))}%`;
   return (
     <div className="panneau-corps" style={{ paddingBottom: 4 }} aria-hidden="true">
-      <div style={{ fontSize: 12, color: "var(--encre-3)" }}>Calendrier : <span style={{ color: "var(--bleu)" }}>● annoncés</span> · <span style={{ color: "var(--ambre)" }}>■ renouvellements prédits</span></div>
+      <div style={{ fontSize: 12, color: "var(--encre-3)" }}>{t("Calendrier :")} <span style={{ color: "var(--bleu)" }}>● {t("annoncés")}</span> · <span style={{ color: "var(--ambre)" }}>■ {t("renouvellements prédits")}</span></div>
       <div className="frise">
         <div className="axe" />
         {Array.from({ length: a1 - a0 + 1 }, (_, k) => a0 + k).map((a) => <span key={a} className="an" style={{ left: pos(new Date(a, 0, 1).getTime()) }}>{a}</span>)}
