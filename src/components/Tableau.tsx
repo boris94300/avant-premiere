@@ -73,12 +73,13 @@ export default function Tableau() {
     if (p && p in PROFILS) setProfil(p);
     const vue = u.get("vue"); if (vue === "lanterne") setVolet("recherche"); else if (vue === "arbre") setVolet("profils"); else if (vue === "pont") setVolet("resultats");
     if (v) lancer(v, p && p in PROFILS ? p : "entreprise");
+    window.history.replaceState(null, "", window.location.pathname);
     return () => source.current?.close();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function partager() {
-    const url = window.location.href;
+    const url = `${window.location.origin}/?profil=${profil}&q=${encodeURIComponent(q)}`;
     if (navigator.share) navigator.share({ title: `Avant-Première — ${q}`, url }).catch(() => {});
     else navigator.clipboard?.writeText(url).then(() => { setCopie(true); setTimeout(() => setCopie(false), 2000); });
   }
@@ -88,7 +89,6 @@ export default function Tableau() {
     source.current?.close();
     setQ(v); setEnCours(true); setFiltre("tous"); setNbLeads(8);
     setEtat({ etapes: [] }); setVolet("resultats"); setLeadChoisi(null);
-    window.history.replaceState(null, "", `?profil=${p}&q=${encodeURIComponent(v)}`);
     const es = new EventSource(`/api/analyse?profil=${p}&q=${encodeURIComponent(v)}`);
     source.current = es;
     es.onmessage = (m) => {
