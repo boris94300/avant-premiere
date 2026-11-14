@@ -13,7 +13,17 @@ export type Resultat<T = any> = { data: T; appel: Appel };
 
 let rpcId = 0;
 
+/** Une source officielle qui ne répond pas est réessayée une fois. */
 export async function outil<T = any>(nom: string, args: Record<string, unknown> = {}): Promise<Resultat<T>> {
+  try { return await appeler<T>(nom, args); }
+  catch (e) {
+    if (!/ne répond pas/i.test(String((e as Error)?.message))) throw e;
+    await new Promise((r) => setTimeout(r, 900));
+    return appeler<T>(nom, args);
+  }
+}
+
+async function appeler<T = any>(nom: string, args: Record<string, unknown> = {}): Promise<Resultat<T>> {
   const cle = process.env.HEMICYCLE_API_KEY;
   if (!cle) throw new Error("HEMICYCLE_API_KEY manquante");
   const t0 = Date.now();
