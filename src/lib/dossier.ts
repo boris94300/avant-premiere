@@ -32,7 +32,7 @@ export function exporterCsv(leads: Lead[], nom: string) {
 /** Les polices standard du PDF ne couvrent que le Latin-1 étendu. */
 const pdfTxt = (s: unknown) => String(s ?? "").replace(/[\u202f\u00a0\u2009]/g, " ").replace(/[’‘]/g, "'").replace(/[“”«»]/g, '"').replace(/[–—]/g, "-").replace(/…/g, "...").replace(/œ/g, "oe").replace(/Œ/g, "OE").replace(/\s?€/g, " EUR").replace(/[^\x09\x0a\x20-\xff]/g, "");
 
-export async function exporterPdf(d: Dossier) {
+async function construirePdf(d: Dossier) {
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const L = 595, H = 842, M = 48, W = L - 2 * M;
@@ -87,5 +87,55 @@ export async function exporterPdf(d: Dossier) {
 
   const n = doc.getNumberOfPages();
   for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(140, 146, 158); doc.text(pdfTxt(`Avant-Première · ${nom}`), M, H - 28); doc.text(`${i} / ${n}`, L - M, H - 28, { align: "right" }); }
-  doc.save(`dossier-${slug(nom)}.pdf`);
+  return { blob: doc.output("blob") as Blob, fichier: `dossier-${slug(nom)}.pdf` };
+}
+
+export async function exporterPdf(d: Dossier) {
+  const { blob, fichier } = await construirePdf(d);
+  telecharger(blob, fichier);
+}
+
+const b64 = (o: Uint8Array) => { let s = ""; for (let i = 0; i < o.length; i += 0x8000) s += String.fromCharCode(...o.subarray(i, i + 0x8000)); return btoa(s); };
+const b64Texte = (t: string) => b64(new TextEncoder().encode(t));
+const lignes76 = (s: string) => s.replace(/(.{76})/g, "$1\r\n");
+
+export function decouperMail(mail: string) {
+  const m = mail.match(/^\s*Objet\s*:\s*(.+)\n+/i);
+  return { sujet: m ? m[1].trim() : "Prise de contact", corps: m ? mail.slice(m[0].length) : mail };
+}
+
+/** Mail avec le dossier PDF en pièce jointe : partage natif sur téléphone, brouillon .eml ailleurs. */
+export async function envoyerAvecPdf(d: Dossier) {
+  if (!d.mail) return;
+  const { blob, fichier } = await construirePdf(d);
+  const { sujet, corps } = decouperMail(d.mail);
+  const piece = new File([blob], fichier, { type: "application/pdf" });
+  const tactile = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+  if (tactile && navigator.canShare?.({ files: [piece] })) {
+    try { await navigator.share({ files: [piece], title: sujet, text: `${sujet}\n\n${corps}` }); return; }
+    catch (e) { if ((e as Error).name === "AbortError") return; }
+  }
+  const sep = `=_avant_premiere_${Date.now()}`;
+  const eml = [
+    ...(d.destinataire ? [`To: ${d.destinataire}`] : []),
+    `Subject: =?UTF-8?B?${b64Texte(sujet)}?=`,
+    "X-Unsent: 1",
+    "MIME-Version: 1.0",
+    `Content-Type: multipart/mixed; boundary="${sep}"`,
+    "",
+    `--${sep}`,
+    "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: base64",
+    "",
+    lignes76(b64Texte(corps)),
+    `--${sep}`,
+    `Content-Type: application/pdf; name="${fichier}"`,
+    "Content-Transfer-Encoding: base64",
+    `Content-Disposition: attachment; filename="${fichier}"`,
+    "",
+    lignes76(b64(new Uint8Array(await blob.arrayBuffer()))),
+    `--${sep}--`,
+    "",
+  ].join("\r\n");
+  telecharger(new Blob([eml], { type: "message/rfc822" }), `mail-${fichier.replace(/^dossier-|\.pdf$/g, "")}.eml`);
 }

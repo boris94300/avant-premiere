@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { PROFILS, SITE, type ProfilId } from "@/config/site";
-import { caAtteignable, exporterCsv, exporterPdf } from "@/lib/dossier";
+import { caAtteignable, exporterCsv, exporterPdf, envoyerAvecPdf, decouperMail } from "@/lib/dossier";
 import type { Concurrent, Etape, Evenement, Kpi, Lead } from "@/lib/types";
 import { FORMATS, fDate, fEuros, fHeure, fPourcent } from "@/lib/format";
 import Compteur from "./Compteur";
@@ -18,9 +18,7 @@ type Etat = {
 };
 
 function lienGmail(mail: string, a?: string) {
-  const m = mail.match(/^\s*Objet\s*:\s*(.+)\n+/i);
-  const sujet = m ? m[1].trim() : "Prise de contact";
-  const corps = m ? mail.slice(m[0].length) : mail;
+  const { sujet, corps } = decouperMail(mail);
   return `https://mail.google.com/mail/?view=cm&fs=1${a ? `&to=${encodeURIComponent(a)}` : ""}&su=${encodeURIComponent(sujet)}&body=${encodeURIComponent(corps)}`;
 }
 
@@ -205,6 +203,7 @@ export default function Tableau() {
                 {profil === "entreprise" && <span className="ca" title="Montants des opportunités à moins de 12 mois, pondérés par leur score">≈ <b>{fEuros(caAtteignable(etat.leads))}</b> atteignables sur 12 mois</span>}
                 <button type="button" onClick={() => exporterPdf({ cible: etat.cible, kpis: etat.kpis, leads: etat.leads!, concurrents: etat.concurrents, textes: etat.parlement, synthese: etat.synthese?.texte, mail: etat.synthese?.mail, destinataire: etat.synthese?.destinataire })}>Dossier PDF</button>
                 <button type="button" onClick={() => exporterCsv(etat.leads!, etat.cible?.titre || profil)}>Excel</button>
+                {etat.synthese?.mail && <button type="button" title="Le mail avec le dossier PDF en pièce jointe" onClick={() => envoyerAvecPdf({ cible: etat.cible, kpis: etat.kpis, leads: etat.leads!, concurrents: etat.concurrents, textes: etat.parlement, synthese: etat.synthese?.texte, mail: etat.synthese?.mail, destinataire: etat.synthese?.destinataire })}>Mail + PDF</button>}
                 {etat.synthese?.mail && <a href={lienGmail(etat.synthese.mail, etat.synthese.destinataire)} target="_blank" rel="noreferrer" title={etat.synthese.destinataire ? `À : ${etat.synthese.destinataire}` : "Destinataire à compléter"}>Gmail</a>}
               </div>
             )}
