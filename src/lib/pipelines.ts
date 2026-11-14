@@ -102,7 +102,7 @@ const EFFECTIFS: Record<string, [number, string]> = {
 const PLAFOND_CATEGORIE: Record<string, number> = { PME: 50e6, ETI: 1.5e9 };
 const LABELS: [string, string][] = [["est_rge", "RGE"], ["est_bio", "bio"], ["est_ess", "économie sociale et solidaire"], ["est_siae", "insertion par l'activité économique"], ["est_qualiopi", "Qualiopi"], ["est_societe_mission", "société à mission"], ["est_achats_responsables", "label achats responsables"], ["est_patrimoine_vivant", "entreprise du patrimoine vivant"]];
 
-type Taille = { ca: number; caLibelle: string; estime: boolean; effectifs?: string; labels: string[] };
+type Taille = { ca: number; caLibelle: string; estime: boolean; effectifs?: string; labels: string[]; site?: string | null };
 
 /** Taille de l'entreprise lue dans le registre officiel (recherche-entreprises.api.gouv.fr) : comptes publiés, sinon ordre de grandeur d'après les effectifs. */
 async function tailleEntreprise(siren: string): Promise<Taille | null> {
@@ -118,6 +118,17 @@ async function tailleEntreprise(siren: string): Promise<Taille | null> {
   // Ordre de grandeur : 100 k€ par salarié, borné par le plafond légal de la catégorie.
   const ca = Math.min(Math.max(150e3, (eff?.[0] ?? 1) * 100e3), PLAFOND_CATEGORIE[e.categorie_entreprise] ?? Infinity);
   return { ca, caLibelle: `environ ${euros(ca)} (estimé d'après les effectifs, comptes non publiés)`, estime: true, effectifs: eff?.[1], labels };
+}
+
+/** Site officiel de l'entreprise d'après Wikidata (gratuit, sans clé) : connu surtout pour les grandes entreprises. */
+async function siteWeb(siren: string): Promise<string | null> {
+  const q = `SELECT ?site WHERE { ?i wdt:P1616 "${siren.replace(/\D/g, "")}" ; wdt:P856 ?site } LIMIT 1`;
+  const r = await fetch(`https://query.wikidata.org/sparql?query=${encodeURIComponent(q)}`, {
+    headers: { Accept: "application/sparql-results+json", "User-Agent": "AvantPremiere/1.0 (https://avant-premiere-nine.vercel.app)" },
+    signal: AbortSignal.timeout(5000), cache: "no-store",
+  });
+  if (!r.ok) return null;
+  return (await r.json()).results?.bindings?.[0]?.site?.value || null;
 }
 
 const SECTEURS_VUS = new Map<string, { secteur: string; mots: string[] }>();
@@ -153,8 +164,8 @@ export async function analyseEntreprise(q: string, a: Agent) {
   });
   const mots = secteur!.mots;
   const taille = await a.etape("taille", "Je mesure la taille de l'entreprise (registre officiel, comptes publiés)…", async () => {
-    const t = await tailleEntreprise(ent.siren).catch(() => null);
-    return { outil: "Annuaire des entreprises (data.gouv.fr)", detail: t ? `Chiffre d'affaires : ${t.caLibelle}` : "Taille inconnue : montants non filtrés", valeur: t };
+    const [t, site] = await Promise.all([tailleEntreprise(ent.siren).catch(() => null), siteWeb(ent.siren).catch(() => null)]);
+    return { outil: "Annuaire des entreprises (data.gouv.fr) + Wikidata", detail: [t ? `Chiffre d'affaires : ${t.caLibelle}` : "Taille inconnue : montants non filtrés", site && `site ${site}`].filter(Boolean).join(" · "), valeur: t && { ...t, site } };
   });
   // Règle de prudence : un marché est « à la taille » s'il pèse au plus la moitié du chiffre d'affaires par an.
   const maxAnnuel = taille ? taille.ca / 2 : Infinity;
@@ -171,6 +182,7 @@ export async function analyseEntreprise(q: string, a: Agent) {
       ...(taille ? [{ label: "Chiffre d'affaires", valeur: taille.caLibelle }] : []),
       ...(taille?.effectifs ? [{ label: "Effectifs", valeur: taille.effectifs }] : []),
       ...(taille?.labels.length ? [{ label: "Labels publics", valeur: taille.labels.join(", ") }] : []),
+      ...(taille?.site ? [{ label: "Site web (Wikidata)", valeur: taille.site }] : []),
       { label: "Établissements ouverts", valeur: String(ent.etablissements_ouverts ?? "—") },
       { label: "Siège", valeur: ent.siege?.adresse || "—" },
       { label: "Dirigeant", valeur: ent.dirigeants?.[0] ? `${ent.dirigeants[0].prenoms ?? ""} ${ent.dirigeants[0].nom}`.trim() : "—" },
@@ -266,7 +278,9 @@ export async function analyseEntreprise(q: string, a: Agent) {
     { label: "Marchés de votre secteur à une seule offre", valeur: st.pctUneOffre, format: "pourcent", aide: "Plus ce taux est haut, plus il y a de place pour un nouvel entrant" },
   ] });
   a.envoyer({ t: "carte", valeurs, legende: "Montant des opportunités par département", focusDept: depSiege || undefined });
-  a.envoyer({ t: "leads", leads: leads.slice(0, 30), titre: "Vos opportunités, triées par chances" });
+  const gros = leads.filter((l) => l.horsTaille).slice(0, 3);
+  const affiches = [...leads.filter((l) => !l.horsTaille).slice(0, 30 - gros.length), ...gros];
+  a.envoyer({ t: "leads", leads: affiches, titre: "Vos opportunités, triées par chances" });
   const conc: Concurrent[] = titulaires.map((t) => ({ ...t, nom: noms[t.siret] || `SIRET ${t.siret}`, vous: t.siret.startsWith(ent.siren) }));
   a.envoyer({ t: "concurrents", concurrents: conc, titre: "Qui gagne les marchés de votre secteur" });
 
